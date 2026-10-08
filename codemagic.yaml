@@ -1,0 +1,79 @@
+workflows:
+  flappy-bird-deb-ipa:
+    name: FlappyBird - deb + ipa
+    max_build_duration: 30
+    environment:
+      xcode: 15.4
+      vars:
+        BUNDLE_ID: "com.aiwolfie.flappybird"
+        APP_NAME: "FlappyBird"
+
+    scripts:
+      - name: Araçları kur
+        script: |
+          brew install ldid dpkg
+
+      - name: Xcode projesi oluştur (xcodegen olmadan)
+        script: |
+          mkdir -p build
+
+          # xcodeproj olmadan doğrudan xcodebuild ile Swift compile
+          swiftc \
+            FlappyBird/AppDelegate.swift \
+            FlappyBird/GameViewController.swift \
+            FlappyBird/GameScene.swift \
+            -sdk $(xcrun --sdk iphoneos --show-sdk-path) \
+            -target arm64-apple-ios14.0 \
+            -framework UIKit \
+            -framework SpriteKit \
+            -framework AudioToolbox \
+            -module-name FlappyBird \
+            -parse-as-library \
+            -Onone \
+            -o build/FlappyBird_arm64
+
+          # arm64e
+          swiftc \
+            FlappyBird/AppDelegate.swift \
+            FlappyBird/GameViewController.swift \
+            FlappyBird/GameScene.swift \
+            -sdk $(xcrun --sdk iphoneos --show-sdk-path) \
+            -target arm64e-apple-ios14.0 \
+            -framework UIKit \
+            -framework SpriteKit \
+            -framework AudioToolbox \
+            -module-name FlappyBird \
+            -parse-as-library \
+            -Onone \
+            -o build/FlappyBird_arm64e
+
+          # fat binary
+          lipo -create build/FlappyBird_arm64 build/FlappyBird_arm64e \
+            -output build/FlappyBird
+
+      - name: .app bundle oluştur
+        script: |
+          mkdir -p package/Applications/FlappyBird.app
+          cp build/FlappyBird package/Applications/FlappyBird.app/
+          cp FlappyBird/Info.plist package/Applications/FlappyBird.app/
+          chmod 755 package/Applications/FlappyBird.app/FlappyBird
+
+      - name: ldid ile imzala
+        script: |
+          ldid -SFlappyBird/FlappyBird.entitlements \
+            package/Applications/FlappyBird.app/FlappyBird
+
+      - name: .deb paketle
+        script: |
+          dpkg-deb -Zgzip --build package \
+            FlappyBird_1.0_iphoneos-arm64.deb
+
+      - name: .ipa oluştur
+        script: |
+          mkdir -p ipa_stage/Payload
+          cp -r package/Applications/FlappyBird.app ipa_stage/Payload/
+          cd ipa_stage && zip -r ../FlappyBird.ipa Payload/ && cd ..
+
+    artifacts:
+      - FlappyBird_1.0_iphoneos-arm64.deb
+      - FlappyBird.ipa
